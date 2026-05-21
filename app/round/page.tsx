@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/app-shell'
-import { useTournamentStore, getPlayerById, getCourtById } from '@/lib/store'
+import { useTournamentStore, getPlayerById, getCourtById, getTeamByPlayerIds, FORMAT_LABELS } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { ChevronRight, Check, Timer, Coffee, Pencil, Share2 } from 'lucide-react'
+import { ChevronRight, Check, Timer, Coffee, Pencil, Share2, Loader2 } from 'lucide-react'
 import type { Match, Tournament } from '@/lib/store'
 
 function ScoreInput({
@@ -67,16 +67,18 @@ function MatchCard({
   onEdit: (matchId: string) => void
 }) {
   const court = getCourtById(tournament, match.courtId)
-  const team1Players = match.team1.map(id => getPlayerById(tournament, id))
-  const team2Players = match.team2.map(id => getPlayerById(tournament, id))
+  const isTeamFormat = tournament.config.format === 'team-americano' || tournament.config.format === 'team-mexicano'
   const maxPoints = tournament.config.pointsPerMatch
 
-  // Derive confirmed state from the store so it survives page refresh
+  const team1 = isTeamFormat ? getTeamByPlayerIds(tournament, match.team1) : null
+  const team2 = isTeamFormat ? getTeamByPlayerIds(tournament, match.team2) : null
+  const team1Players = match.team1.map(id => getPlayerById(tournament, id))
+  const team2Players = match.team2.map(id => getPlayerById(tournament, id))
+
   const [isConfirmed, setIsConfirmed] = useState(!!match.score)
   const [team1Score, setTeam1Score] = useState(match.score?.team1Points ?? 0)
   const [team2Score, setTeam2Score] = useState(match.score?.team2Points ?? 0)
 
-  // Sync if the match prop changes (e.g. after store update)
   useEffect(() => {
     if (match.score) {
       setIsConfirmed(true)
@@ -134,18 +136,27 @@ function MatchCard({
       <div className="space-y-4">
         {/* Team 1 */}
         <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap gap-1.5">
-              {team1Players.map((player, i) => (
-                <Badge
-                  key={i}
-                  variant="secondary"
-                  className="bg-secondary text-foreground text-sm px-2 py-1"
-                >
-                  {player?.name || 'Unknown'}
-                </Badge>
-              ))}
-            </div>
+          <div className="flex-1 min-w-0 mr-3">
+            {isTeamFormat && team1 ? (
+              <div>
+                <p className="font-semibold text-foreground text-sm">{team1.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {team1Players.map(p => p?.name ?? 'Unknown').join(' & ')}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {team1Players.map((player, i) => (
+                  <Badge
+                    key={i}
+                    variant="secondary"
+                    className="bg-secondary text-foreground text-sm px-2 py-1"
+                  >
+                    {player?.name || 'Unknown'}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
           <ScoreInput
             value={team1Score}
@@ -164,18 +175,27 @@ function MatchCard({
 
         {/* Team 2 */}
         <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap gap-1.5">
-              {team2Players.map((player, i) => (
-                <Badge
-                  key={i}
-                  variant="secondary"
-                  className="bg-secondary text-foreground text-sm px-2 py-1"
-                >
-                  {player?.name || 'Unknown'}
-                </Badge>
-              ))}
-            </div>
+          <div className="flex-1 min-w-0 mr-3">
+            {isTeamFormat && team2 ? (
+              <div>
+                <p className="font-semibold text-foreground text-sm">{team2.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {team2Players.map(p => p?.name ?? 'Unknown').join(' & ')}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {team2Players.map((player, i) => (
+                  <Badge
+                    key={i}
+                    variant="secondary"
+                    className="bg-secondary text-foreground text-sm px-2 py-1"
+                  >
+                    {player?.name || 'Unknown'}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
           <ScoreInput
             value={team2Score}
@@ -206,11 +226,9 @@ function RoundTimer({ minutes }: { minutes: number }) {
 
   useEffect(() => {
     if (!isRunning || secondsLeft <= 0) return
-
     const interval = setInterval(() => {
       setSecondsLeft(s => Math.max(0, s - 1))
     }, 1000)
-
     return () => clearInterval(interval)
   }, [isRunning, secondsLeft])
 
@@ -238,7 +256,25 @@ function RoundTimer({ minutes }: { minutes: number }) {
 function ByeSection({ playerIds, tournament }: { playerIds: string[], tournament: Tournament }) {
   if (playerIds.length === 0) return null
 
-  const players = playerIds.map(id => getPlayerById(tournament, id))
+  const isTeamFormat = tournament.config.format === 'team-americano' || tournament.config.format === 'team-mexicano'
+
+  // For team formats, show pairs sitting out
+  const items: string[] = []
+  if (isTeamFormat && tournament.teams) {
+    const seenTeams = new Set<string>()
+    for (const playerId of playerIds) {
+      const team = tournament.teams.find(t => t.player1Id === playerId || t.player2Id === playerId)
+      if (team && !seenTeams.has(team.id)) {
+        seenTeams.add(team.id)
+        items.push(team.name)
+      }
+    }
+  } else {
+    for (const id of playerIds) {
+      const player = getPlayerById(tournament, id)
+      if (player) items.push(player.name)
+    }
+  }
 
   return (
     <Card className="p-4 border-border bg-card/50">
@@ -247,13 +283,13 @@ function ByeSection({ playerIds, tournament }: { playerIds: string[], tournament
         <span className="text-sm font-medium text-muted-foreground">Sitting out this round</span>
       </div>
       <div className="flex flex-wrap gap-2">
-        {players.map((player, i) => (
+        {items.map((item, i) => (
           <Badge
             key={i}
             variant="outline"
             className="bg-muted/50 text-muted-foreground border-border"
           >
-            {player?.name || 'Unknown'}
+            {item}
           </Badge>
         ))}
       </div>
@@ -268,8 +304,8 @@ export default function RoundPage() {
   const confirmRound = useTournamentStore(state => state.confirmRound)
   const advanceToNextRound = useTournamentStore(state => state.advanceToNextRound)
 
-  // Tracks matches currently being edited so "Next Round" stays disabled while editing
   const [editingMatches, setEditingMatches] = useState<Set<string>>(new Set())
+  const [isGenerating, setIsGenerating] = useState(false)
 
   if (!tournament) {
     return (
@@ -284,6 +320,12 @@ export default function RoundPage() {
       </AppShell>
     )
   }
+
+  const format = tournament.config.format ?? 'americano'
+  const isMexicanoFormat = format === 'mexicano' || format === 'team-mexicano'
+  const totalRounds = isMexicanoFormat
+    ? (tournament.config.targetRounds ?? 7)
+    : tournament.rounds.length
 
   const currentRound = tournament.rounds.find(r => r.number === tournament.currentRound)
 
@@ -314,13 +356,19 @@ export default function RoundPage() {
     setEditingMatches(prev => new Set([...prev, matchId]))
   }
 
-  // Derived from the store so it survives page refresh — no local confirmedMatches set needed
   const allMatchesConfirmed =
     currentRound.matches.every(m => m.score !== undefined) &&
     editingMatches.size === 0
 
-  const handleNextRound = () => {
+  const handleNextRound = async () => {
     confirmRound(tournament.id, currentRound.number)
+
+    if (isMexicanoFormat) {
+      setIsGenerating(true)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      setIsGenerating(false)
+    }
+
     advanceToNextRound(tournament.id)
     setEditingMatches(new Set())
 
@@ -342,7 +390,7 @@ export default function RoundPage() {
       .map(id => getPlayerById(tournament, id)?.name ?? 'Unknown')
 
     const lines = [
-      `${tournament.name} — Round ${currentRound.number} of ${tournament.rounds.length}`,
+      `${tournament.name} — Round ${currentRound.number} of ${totalRounds}`,
       ...courtLines,
       ...(byeNames.length > 0 ? [`Sitting out: ${byeNames.join(', ')}`] : []),
     ]
@@ -354,7 +402,13 @@ export default function RoundPage() {
     }
   }
 
-  const isLastRound = currentRound.number === tournament.rounds.length
+  const isLastRound = currentRound.number >= totalRounds
+
+  const nextRoundButtonText = isLastRound
+    ? 'Finish Tournament'
+    : isMexicanoFormat
+      ? 'Generate Next Round'
+      : 'Next Round'
 
   return (
     <AppShell>
@@ -362,10 +416,17 @@ export default function RoundPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">
-              Round {currentRound.number} of {tournament.rounds.length}
-            </h1>
-            <p className="text-sm text-muted-foreground">{tournament.name}</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-foreground">
+                Round {currentRound.number} of {totalRounds}
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-sm text-muted-foreground">{tournament.name}</p>
+              <Badge variant="outline" className="text-xs text-muted-foreground border-border bg-secondary/50 px-1.5 py-0">
+                {FORMAT_LABELS[format]}
+              </Badge>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -381,30 +442,42 @@ export default function RoundPage() {
           </div>
         </div>
 
-        {/* Matches */}
-        <div className="space-y-4">
-          {currentRound.matches.map((match) => (
-            <MatchCard
-              key={match.id}
-              match={match}
-              tournament={tournament}
-              roundNumber={currentRound.number}
-              onScoreUpdate={handleScoreUpdate}
-              onEdit={handleEdit}
-            />
-          ))}
-        </div>
+        {/* Generating overlay */}
+        {isGenerating && (
+          <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm font-medium">Generating next round...</span>
+          </div>
+        )}
 
-        {/* Bye Players */}
-        <ByeSection playerIds={currentRound.byePlayerIds} tournament={tournament} />
+        {!isGenerating && (
+          <>
+            {/* Matches */}
+            <div className="space-y-4">
+              {currentRound.matches.map((match) => (
+                <MatchCard
+                  key={match.id}
+                  match={match}
+                  tournament={tournament}
+                  roundNumber={currentRound.number}
+                  onScoreUpdate={handleScoreUpdate}
+                  onEdit={handleEdit}
+                />
+              ))}
+            </div>
+
+            {/* Bye Players */}
+            <ByeSection playerIds={currentRound.byePlayerIds} tournament={tournament} />
+          </>
+        )}
 
         {/* Next Round Button */}
         <Button
           onClick={handleNextRound}
-          disabled={!allMatchesConfirmed}
+          disabled={!allMatchesConfirmed || isGenerating}
           className="w-full h-14 text-lg font-semibold bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
         >
-          {isLastRound ? 'Finish Tournament' : 'Next Round'}
+          {nextRoundButtonText}
           <ChevronRight className="w-5 h-5 ml-2" />
         </Button>
       </div>
