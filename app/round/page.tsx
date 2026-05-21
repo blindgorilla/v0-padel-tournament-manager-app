@@ -8,15 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { ChevronRight, Check, Timer, Coffee } from 'lucide-react'
-import type { Match, Tournament, Round } from '@/lib/store'
+import { ChevronRight, Check, Timer, Coffee, Pencil, Share2 } from 'lucide-react'
+import type { Match, Tournament } from '@/lib/store'
 
-function ScoreInput({ 
-  value, 
-  onChange, 
-  maxPoints, 
-  disabled 
-}: { 
+function ScoreInput({
+  value,
+  onChange,
+  maxPoints,
+  disabled
+}: {
   value: number
   onChange: (value: number) => void
   maxPoints: number
@@ -53,42 +53,58 @@ function ScoreInput({
   )
 }
 
-function MatchCard({ 
-  match, 
-  tournament, 
+function MatchCard({
+  match,
+  tournament,
   roundNumber,
   onScoreUpdate,
-}: { 
+  onEdit,
+}: {
   match: Match
   tournament: Tournament
   roundNumber: number
   onScoreUpdate: (matchId: string, team1Points: number, team2Points: number) => void
+  onEdit: (matchId: string) => void
 }) {
   const court = getCourtById(tournament, match.courtId)
   const team1Players = match.team1.map(id => getPlayerById(tournament, id))
   const team2Players = match.team2.map(id => getPlayerById(tournament, id))
   const maxPoints = tournament.config.pointsPerMatch
-  
+
+  // Derive confirmed state from the store so it survives page refresh
+  const [isConfirmed, setIsConfirmed] = useState(!!match.score)
   const [team1Score, setTeam1Score] = useState(match.score?.team1Points ?? 0)
   const [team2Score, setTeam2Score] = useState(match.score?.team2Points ?? 0)
-  const [isConfirmed, setIsConfirmed] = useState(!!match.score)
-  
-  // Auto-fill the other team's score
+
+  // Sync if the match prop changes (e.g. after store update)
+  useEffect(() => {
+    if (match.score) {
+      setIsConfirmed(true)
+      setTeam1Score(match.score.team1Points)
+      setTeam2Score(match.score.team2Points)
+    }
+  }, [match.score])
+
   const handleTeam1Change = (value: number) => {
     setTeam1Score(value)
     setTeam2Score(maxPoints - value)
   }
-  
+
   const handleTeam2Change = (value: number) => {
     setTeam2Score(value)
     setTeam1Score(maxPoints - value)
   }
-  
+
   const handleConfirm = () => {
     onScoreUpdate(match.id, team1Score, team2Score)
     setIsConfirmed(true)
   }
-  
+
+  const handleEdit = () => {
+    setIsConfirmed(false)
+    onEdit(match.id)
+  }
+
   return (
     <Card className={cn(
       'p-4 border-border bg-card transition-colors',
@@ -98,13 +114,22 @@ function MatchCard({
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-foreground">{court?.name || 'Court'}</h3>
         {isConfirmed && (
-          <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
-            <Check className="w-3 h-3 mr-1" />
-            Confirmed
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
+              <Check className="w-3 h-3 mr-1" />
+              Confirmed
+            </Badge>
+            <button
+              onClick={handleEdit}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-secondary"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit
+            </button>
+          </div>
         )}
       </div>
-      
+
       {/* Teams & Scores */}
       <div className="space-y-4">
         {/* Team 1 */}
@@ -112,9 +137,9 @@ function MatchCard({
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap gap-1.5">
               {team1Players.map((player, i) => (
-                <Badge 
-                  key={i} 
-                  variant="secondary" 
+                <Badge
+                  key={i}
+                  variant="secondary"
                   className="bg-secondary text-foreground text-sm px-2 py-1"
                 >
                   {player?.name || 'Unknown'}
@@ -129,22 +154,22 @@ function MatchCard({
             disabled={isConfirmed}
           />
         </div>
-        
+
         {/* VS Divider */}
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-border" />
           <span className="text-xs font-medium text-muted-foreground">VS</span>
           <div className="flex-1 h-px bg-border" />
         </div>
-        
+
         {/* Team 2 */}
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap gap-1.5">
               {team2Players.map((player, i) => (
-                <Badge 
-                  key={i} 
-                  variant="secondary" 
+                <Badge
+                  key={i}
+                  variant="secondary"
                   className="bg-secondary text-foreground text-sm px-2 py-1"
                 >
                   {player?.name || 'Unknown'}
@@ -160,7 +185,7 @@ function MatchCard({
           />
         </div>
       </div>
-      
+
       {/* Confirm Button */}
       {!isConfirmed && (
         <Button
@@ -178,21 +203,21 @@ function MatchCard({
 function RoundTimer({ minutes }: { minutes: number }) {
   const [secondsLeft, setSecondsLeft] = useState(minutes * 60)
   const [isRunning, setIsRunning] = useState(false)
-  
+
   useEffect(() => {
     if (!isRunning || secondsLeft <= 0) return
-    
+
     const interval = setInterval(() => {
       setSecondsLeft(s => Math.max(0, s - 1))
     }, 1000)
-    
+
     return () => clearInterval(interval)
   }, [isRunning, secondsLeft])
-  
+
   const mins = Math.floor(secondsLeft / 60)
   const secs = secondsLeft % 60
   const isLow = secondsLeft < 60
-  
+
   return (
     <button
       onClick={() => setIsRunning(!isRunning)}
@@ -212,9 +237,9 @@ function RoundTimer({ minutes }: { minutes: number }) {
 
 function ByeSection({ playerIds, tournament }: { playerIds: string[], tournament: Tournament }) {
   if (playerIds.length === 0) return null
-  
+
   const players = playerIds.map(id => getPlayerById(tournament, id))
-  
+
   return (
     <Card className="p-4 border-border bg-card/50">
       <div className="flex items-center gap-2 mb-3">
@@ -223,9 +248,9 @@ function ByeSection({ playerIds, tournament }: { playerIds: string[], tournament
       </div>
       <div className="flex flex-wrap gap-2">
         {players.map((player, i) => (
-          <Badge 
-            key={i} 
-            variant="outline" 
+          <Badge
+            key={i}
+            variant="outline"
             className="bg-muted/50 text-muted-foreground border-border"
           >
             {player?.name || 'Unknown'}
@@ -242,9 +267,10 @@ export default function RoundPage() {
   const updateMatchScore = useTournamentStore(state => state.updateMatchScore)
   const confirmRound = useTournamentStore(state => state.confirmRound)
   const advanceToNextRound = useTournamentStore(state => state.advanceToNextRound)
-  
-  const [confirmedMatches, setConfirmedMatches] = useState<Set<string>>(new Set())
-  
+
+  // Tracks matches currently being edited so "Next Round" stays disabled while editing
+  const [editingMatches, setEditingMatches] = useState<Set<string>>(new Set())
+
   if (!tournament) {
     return (
       <AppShell>
@@ -258,9 +284,9 @@ export default function RoundPage() {
       </AppShell>
     )
   }
-  
+
   const currentRound = tournament.rounds.find(r => r.number === tournament.currentRound)
-  
+
   if (!currentRound) {
     return (
       <AppShell>
@@ -274,30 +300,62 @@ export default function RoundPage() {
       </AppShell>
     )
   }
-  
+
   const handleScoreUpdate = (matchId: string, team1Points: number, team2Points: number) => {
     updateMatchScore(tournament.id, currentRound.number, matchId, { team1Points, team2Points })
-    setConfirmedMatches(prev => new Set([...prev, matchId]))
+    setEditingMatches(prev => {
+      const next = new Set(prev)
+      next.delete(matchId)
+      return next
+    })
   }
-  
-  const allMatchesConfirmed = currentRound.matches.every(
-    m => confirmedMatches.has(m.id) || m.score
-  )
-  
+
+  const handleEdit = (matchId: string) => {
+    setEditingMatches(prev => new Set([...prev, matchId]))
+  }
+
+  // Derived from the store so it survives page refresh — no local confirmedMatches set needed
+  const allMatchesConfirmed =
+    currentRound.matches.every(m => m.score !== undefined) &&
+    editingMatches.size === 0
+
   const handleNextRound = () => {
     confirmRound(tournament.id, currentRound.number)
     advanceToNextRound(tournament.id)
-    setConfirmedMatches(new Set())
-    
-    // Check if tournament is now complete
+    setEditingMatches(new Set())
+
     const updatedTournament = useTournamentStore.getState().getActiveTournament()
     if (updatedTournament?.status === 'completed') {
       router.push('/leaderboard')
     }
   }
-  
+
+  const handleShare = async () => {
+    const courtLines = currentRound.matches.map(match => {
+      const court = getCourtById(tournament, match.courtId)
+      const t1 = match.team1.map(id => getPlayerById(tournament, id)?.name ?? 'Unknown')
+      const t2 = match.team2.map(id => getPlayerById(tournament, id)?.name ?? 'Unknown')
+      return `${court?.name ?? 'Court'}: ${t1.join(' & ')} vs ${t2.join(' & ')}`
+    })
+
+    const byeNames = currentRound.byePlayerIds
+      .map(id => getPlayerById(tournament, id)?.name ?? 'Unknown')
+
+    const lines = [
+      `${tournament.name} — Round ${currentRound.number} of ${tournament.rounds.length}`,
+      ...courtLines,
+      ...(byeNames.length > 0 ? [`Sitting out: ${byeNames.join(', ')}`] : []),
+    ]
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+    } catch {
+      // Fallback for environments without clipboard API
+    }
+  }
+
   const isLastRound = currentRound.number === tournament.rounds.length
-  
+
   return (
     <AppShell>
       <div className="space-y-4">
@@ -309,11 +367,20 @@ export default function RoundPage() {
             </h1>
             <p className="text-sm text-muted-foreground">{tournament.name}</p>
           </div>
-          {tournament.config.timeLimitMinutes && (
-            <RoundTimer minutes={tournament.config.timeLimitMinutes} />
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors text-sm font-medium"
+            >
+              <Share2 className="w-4 h-4" />
+              Share
+            </button>
+            {tournament.config.timeLimitMinutes && (
+              <RoundTimer minutes={tournament.config.timeLimitMinutes} />
+            )}
+          </div>
         </div>
-        
+
         {/* Matches */}
         <div className="space-y-4">
           {currentRound.matches.map((match) => (
@@ -323,13 +390,14 @@ export default function RoundPage() {
               tournament={tournament}
               roundNumber={currentRound.number}
               onScoreUpdate={handleScoreUpdate}
+              onEdit={handleEdit}
             />
           ))}
         </div>
-        
+
         {/* Bye Players */}
         <ByeSection playerIds={currentRound.byePlayerIds} tournament={tournament} />
-        
+
         {/* Next Round Button */}
         <Button
           onClick={handleNextRound}

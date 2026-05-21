@@ -20,7 +20,8 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border safe-bottom">
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
         {navItems.map((item) => {
-          const isActive = pathname === item.href
+          // Home uses exact match to avoid highlighting for all routes
+        const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
           return (
             <Link
               key={item.href}

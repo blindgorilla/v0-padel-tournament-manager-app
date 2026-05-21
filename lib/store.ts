@@ -7,6 +7,7 @@ export interface Player {
   id: string
   name: string
   totalPoints: number
+  pointsConceded: number
   matchesPlayed: number
   wins: number
   losses: number
@@ -70,39 +71,27 @@ interface TournamentStore {
   deleteTournament: (id: string) => void
 }
 
-// Rotation algorithm: Fix player[0], rotate players[1..N-1]
+// Rotation algorithm: rotate all players so byes are distributed evenly across everyone
 function generateRounds(players: Player[], courts: Court[], pointsPerMatch: 16 | 24 | 32): Round[] {
   const n = players.length
   if (n < 4) return []
-  
+
   const numCourts = courts.length
   const playersPerRound = numCourts * 4
-  
-  // Calculate number of rounds needed (round-robin style)
-  // For N players, we need N-1 rounds to ensure everyone plays with everyone
+
   const numRounds = n - 1
-  
+
   const rounds: Round[] = []
-  
-  // Fixed player is players[0], rotating players are players[1..n-1]
-  const fixed = players[0]
-  const rotating = players.slice(1)
-  
+
   for (let r = 0; r < numRounds; r++) {
-    // Rotate the circle by r positions
-    const rotated = [...rotating]
-    for (let i = 0; i < r; i++) {
-      const first = rotated.shift()!
-      rotated.push(first)
-    }
-    
-    // Combine fixed player with rotated list
-    const activeOrder = [fixed, ...rotated]
-    
+    // Rotate all players by r positions so every player cycles through
+    // the bye slot, distributing sitting-out rounds evenly across all players
+    const rotated = players.map((_, i) => players[(i + r) % n])
+
     // Determine which players are active (on courts) vs bye
     const activeCount = Math.min(playersPerRound, n)
-    const activePlayers = activeOrder.slice(0, activeCount)
-    const byePlayers = activeOrder.slice(activeCount)
+    const activePlayers = rotated.slice(0, activeCount)
+    const byePlayers = rotated.slice(activeCount)
     
     // Create matches: pair players (0,1) vs (2,3) for Court 1, (4,5) vs (6,7) for Court 2, etc.
     const matches: Match[] = []
@@ -143,6 +132,7 @@ export const useTournamentStore = create<TournamentStore>()(
           id: uuidv4(),
           name: pName,
           totalPoints: 0,
+          pointsConceded: 0,
           matchesPlayed: 0,
           wins: 0,
           losses: 0,
@@ -235,6 +225,7 @@ export const useTournamentStore = create<TournamentStore>()(
                 
                 if (isTeam1) {
                   playerCopy.totalPoints += match.score.team1Points
+                  playerCopy.pointsConceded += match.score.team2Points
                   if (match.score.team1Points > match.score.team2Points) {
                     playerCopy.wins += 1
                   } else if (match.score.team1Points < match.score.team2Points) {
@@ -244,6 +235,7 @@ export const useTournamentStore = create<TournamentStore>()(
                   }
                 } else {
                   playerCopy.totalPoints += match.score.team2Points
+                  playerCopy.pointsConceded += match.score.team1Points
                   if (match.score.team2Points > match.score.team1Points) {
                     playerCopy.wins += 1
                   } else if (match.score.team2Points < match.score.team1Points) {
@@ -322,8 +314,10 @@ export function getCourtById(tournament: Tournament, courtId: string): Court | u
 
 export function getRankedPlayers(tournament: Tournament): Player[] {
   return [...tournament.players].sort((a, b) => {
-    // Sort by total points (desc), then by wins (desc), then by name (asc)
     if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints
+    const bDiff = b.totalPoints - b.pointsConceded
+    const aDiff = a.totalPoints - a.pointsConceded
+    if (bDiff !== aDiff) return bDiff - aDiff
     if (b.wins !== a.wins) return b.wins - a.wins
     return a.name.localeCompare(b.name)
   })
